@@ -6,7 +6,7 @@ import VectorSource from 'ol/source/Vector';
 import OSM from 'ol/source/OSM';
 import GeoJSON from 'ol/format/GeoJSON';
 import {Style, Fill, Stroke, Circle} from 'ol/style';
-import {fromLonLat} from 'ol/proj';
+import {fromLonLat, transform} from 'ol/proj';
 import Overlay from 'ol/Overlay';
 
 // Example GeoJSON data
@@ -62,29 +62,64 @@ const geojsonData = {
   ]
 };
 
-// Create popup elements
-const popupElement = document.createElement('div');
-popupElement.className = 'ol-popup';
-popupElement.style.backgroundColor = 'white';
-popupElement.style.padding = '10px';
-popupElement.style.borderRadius = '5px';
-popupElement.style.border = '1px solid #cccccc';
-popupElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
-popupElement.style.position = 'absolute';
-popupElement.style.bottom = '12px';
-popupElement.style.left = '-50px';
-popupElement.style.minWidth = '150px';
-popupElement.style.display = 'none';
+// Create hover popup elements
+const hoverPopupElement = document.createElement('div');
+hoverPopupElement.className = 'ol-popup hover-popup';
+hoverPopupElement.style.backgroundColor = 'white';
+hoverPopupElement.style.padding = '10px';
+hoverPopupElement.style.borderRadius = '5px';
+hoverPopupElement.style.border = '1px solid #cccccc';
+hoverPopupElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
+hoverPopupElement.style.position = 'absolute';
+hoverPopupElement.style.bottom = '12px';
+hoverPopupElement.style.left = '-50px';
+hoverPopupElement.style.minWidth = '150px';
+hoverPopupElement.style.display = 'none';
 
-// Create popup overlay
-const popup = new Overlay({
-  element: popupElement,
+// Create click popup elements
+const clickPopupElement = document.createElement('div');
+clickPopupElement.className = 'ol-popup click-popup';
+clickPopupElement.style.backgroundColor = '#2196F3';
+clickPopupElement.style.color = 'white';
+clickPopupElement.style.padding = '15px';
+clickPopupElement.style.borderRadius = '5px';
+clickPopupElement.style.border = '1px solid #1976D2';
+clickPopupElement.style.boxShadow = '0 3px 6px rgba(0,0,0,0.2)';
+clickPopupElement.style.position = 'absolute';
+clickPopupElement.style.bottom = '12px';
+clickPopupElement.style.left = '-50px';
+clickPopupElement.style.minWidth = '200px';
+clickPopupElement.style.display = 'none';
+
+// Create close button for click popup
+const closeButton = document.createElement('button');
+closeButton.innerHTML = '×';
+closeButton.style.position = 'absolute';
+closeButton.style.top = '5px';
+closeButton.style.right = '5px';
+closeButton.style.border = 'none';
+closeButton.style.background = 'none';
+closeButton.style.color = 'white';
+closeButton.style.fontSize = '20px';
+closeButton.style.cursor = 'pointer';
+clickPopupElement.appendChild(closeButton);
+
+// Create popups
+const hoverPopup = new Overlay({
+  element: hoverPopupElement,
   positioning: 'bottom-center',
   stopEvent: false,
   offset: [0, -5]
 });
 
-// Create a vector source with GeoJSON data
+const clickPopup = new Overlay({
+  element: clickPopupElement,
+  positioning: 'bottom-center',
+  stopEvent: true,
+  offset: [0, -5]
+});
+
+// Create vector source
 const vectorSource = new VectorSource({
   features: new GeoJSON().readFeatures(geojsonData, {
     featureProjection: 'EPSG:3857'
@@ -106,7 +141,6 @@ function styleFunction(feature) {
           width: 2
         })
       });
-    
     case 'location':
       return new Style({
         image: new Circle({
@@ -120,7 +154,6 @@ function styleFunction(feature) {
           })
         })
       });
-    
     case 'route':
       return new Style({
         stroke: new Stroke({
@@ -129,7 +162,6 @@ function styleFunction(feature) {
           lineDash: [5, 5]
         })
       });
-    
     default:
       return new Style({
         stroke: new Stroke({
@@ -160,7 +192,7 @@ const map = new Map({
     zoom: 14
   }),
   target: 'map',
-  overlays: [popup]
+  overlays: [hoverPopup, clickPopup]
 });
 
 // Fit view to features
@@ -168,41 +200,113 @@ map.getView().fit(vectorSource.getExtent(), {
   padding: [50, 50, 50, 50]
 });
 
-// Handle pointer movement
+// Function to format coordinates
+function formatCoordinates(coords) {
+  if (!coords) return '';
+  
+  // Transform coordinates from EPSG:3857 to EPSG:4326 (lat/lon)
+  const transformedCoords = transform(coords, 'EPSG:3857', 'EPSG:4326');
+  return `
+    <div style="margin-bottom: 5px;">
+      <strong>Longitude:</strong> ${transformedCoords[0].toFixed(6)}°
+    </div>
+    <div>
+      <strong>Latitude:</strong> ${transformedCoords[1].toFixed(6)}°
+    </div>
+  `;
+}
+
+// Function to format feature coordinates based on geometry type
+function getFeatureCoordinates(feature) {
+  const geometry = feature.getGeometry();
+  const type = geometry.getType();
+  
+  switch(type) {
+    case 'Point':
+      return formatCoordinates(geometry.getCoordinates());
+    case 'LineString':
+      const points = geometry.getCoordinates();
+      return `
+        <div style="margin-bottom: 10px;"><strong>Line Coordinates:</strong></div>
+        ${points.map((point, index) => `
+          <div style="margin-bottom: 5px;">
+            <strong>Point ${index + 1}:</strong>
+            ${formatCoordinates(point)}
+          </div>
+        `).join('')}
+      `;
+    case 'Polygon':
+      const vertices = geometry.getCoordinates()[0];
+      return `
+        <div style="margin-bottom: 10px;"><strong>Polygon Vertices:</strong></div>
+        ${vertices.map((vertex, index) => `
+          <div style="margin-bottom: 5px;">
+            <strong>Vertex ${index + 1}:</strong>
+            ${formatCoordinates(vertex)}
+          </div>
+        `).join('')}
+      `;
+    default:
+      return 'Coordinates not available for this geometry type';
+  }
+}
+
+// Handle pointer movement (hover)
 map.on('pointermove', function(evt) {
   const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
     return feature;
   });
 
   if (feature) {
-    // Get feature properties
     const props = feature.getProperties();
-    
-    // Create popup content
-    const content = `
+    hoverPopupElement.innerHTML = `
       <strong>${props.name}</strong><br>
       <em>${props.type}</em><br>
       ${props.description}
     `;
-    
-    popupElement.innerHTML = content;
-    popupElement.style.display = 'block';
-    popup.setPosition(evt.coordinate);
-    
-    // Change cursor to indicate hoverable
+    hoverPopupElement.style.display = 'block';
+    hoverPopup.setPosition(evt.coordinate);
     map.getTargetElement().style.cursor = 'pointer';
   } else {
-    // Hide popup when not over feature
-    popupElement.style.display = 'none';
+    hoverPopupElement.style.display = 'none';
     map.getTargetElement().style.cursor = '';
   }
 });
 
-// Handle mouse leave from map
+// Handle click events
+map.on('click', function(evt) {
+  const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+    return feature;
+  });
+
+  if (feature) {
+    const props = feature.getProperties();
+    clickPopupElement.innerHTML = `
+      <div style="margin-right: 20px;">
+        <strong style="font-size: 16px;">${props.name}</strong>
+        <div style="margin: 10px 0;">
+          ${getFeatureCoordinates(feature)}
+        </div>
+      </div>
+    `;
+    closeButton.style.display = 'block';
+    clickPopupElement.appendChild(closeButton);
+    clickPopupElement.style.display = 'block';
+    clickPopup.setPosition(evt.coordinate);
+  }
+});
+
+// Close button handler
+closeButton.addEventListener('click', function() {
+  clickPopupElement.style.display = 'none';
+});
+
+// Handle mouse leave
 map.getViewport().addEventListener('mouseout', function() {
-  popupElement.style.display = 'none';
+  hoverPopupElement.style.display = 'none';
   map.getTargetElement().style.cursor = '';
 });
+
 
 // Function to load external GeoJSON
 function loadGeoJSON(url) {
