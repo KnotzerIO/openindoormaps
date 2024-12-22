@@ -21,6 +21,19 @@ export default defineConfig({
     }),
     tsconfigPaths(),
   ],
+  optimizeDeps: {
+    include: ["map-gl-indoor"],
+  },
+  build: {
+    commonjsOptions: {
+      include: [/map-gl-indoor/, /node_modules/],
+    },
+  },
+  resolve: {
+    alias: {
+      "map-gl-indoor": "node_modules/map-gl-indoor/dist/map-gl-indoor.es.js",
+    },
+  },
   ssr: {
     noExternal: ["maplibre-gl", "@maplibre/*"],
   },
